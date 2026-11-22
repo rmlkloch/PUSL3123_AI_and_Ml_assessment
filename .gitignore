@@ -1,0 +1,8 @@
+# Datasets and virtual environments
+data/
+pusl_env/
+
+# Python cache and Jupyter checkpoints
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
