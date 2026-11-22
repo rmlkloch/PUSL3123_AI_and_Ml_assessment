@@ -2,6 +2,10 @@
 data/
 pusl_env/
 
+# Model checkpoints
+models/
+*.pth
+
 # Python cache and Jupyter checkpoints
 __pycache__/
 *.pyc
