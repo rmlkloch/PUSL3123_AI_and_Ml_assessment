@@ -354,3 +354,312 @@ def build_comparison_table(
     ]
 
     return pd.DataFrame(rows)
+
+
+def build_regularisation_comparison_table(
+    summaries: Dict[str, Dict[str, float]],
+) -> pd.DataFrame:
+    """Create a structured Pandas DataFrame comparing all Exercise 3 regularization setups.
+
+    Args:
+        summaries: Dict mapping model names to metric dicts containing:
+            ``params``, ``final_train_loss``, ``min_val_loss``, ``final_val_loss``,
+            ``train_acc``, ``best_val_acc``, ``test_acc``.
+
+    Returns:
+        Formatted DataFrame with comprehensive generalization comparison.
+    """
+    rows: List[Dict[str, str]] = []
+    baseline_test_acc = summaries.get("Baseline CNN", {}).get("test_acc", 71.20)
+
+    for name, s in summaries.items():
+        train_acc = s["train_acc"]
+        test_acc = s["test_acc"]
+        gen_gap = train_acc - test_acc
+        delta = test_acc - baseline_test_acc
+
+        rows.append(
+            {
+                "Model Variant": name,
+                "Parameters": f"{int(s['params']):,}",
+                "Final Train Loss": f"{s['final_train_loss']:.4f}",
+                "Lowest Val Loss": f"{s['min_val_loss']:.4f}",
+                "Final Val Loss": f"{s['final_val_loss']:.4f}",
+                "Final Train Acc": f"{train_acc:.2f}%",
+                "Best Val Acc": f"{s['best_val_acc']:.2f}%",
+                "Test Acc (10k)": f"{test_acc:.2f}%",
+                "Generalisation Gap": f"{gen_gap:.2f}%",
+                "vs. Baseline": f"{delta:+.2f}%" if name != "Baseline CNN" else "Baseline",
+            }
+        )
+
+    return pd.DataFrame(rows)
+
+
+def build_scaling_comparison_table(
+    summaries: Dict[str, Dict[str, float]],
+) -> pd.DataFrame:
+    """Create a structured Pandas DataFrame comparing all Exercise 4 Width and Depth variants.
+
+    Args:
+        summaries: Dict mapping model names to metric dicts containing:
+            ``dimension``, ``type``, ``channels``, ``params``, ``final_train_loss``,
+            ``min_val_loss``, ``final_val_loss``, ``train_acc``, ``best_val_acc``, ``test_acc``.
+
+    Returns:
+        Formatted DataFrame with comprehensive network scaling comparisons.
+    """
+    rows: List[Dict[str, str]] = []
+    baseline_test_acc = summaries.get("Width: Baseline [32, 64]", {}).get("test_acc", 71.20)
+
+    for name, s in summaries.items():
+        train_acc = s["train_acc"]
+        test_acc = s["test_acc"]
+        gen_gap = train_acc - test_acc
+        delta = test_acc - baseline_test_acc
+
+        rows.append(
+            {
+                "Scaling Variant": name,
+                "Scaling Dimension": s.get("dimension", "Width"),
+                "Channel Structure": s.get("channels", ""),
+                "Trainable Parameters": f"{int(s['params']):,}",
+                "Final Train Loss": f"{s['final_train_loss']:.4f}",
+                "Lowest Val Loss": f"{s['min_val_loss']:.4f}",
+                "Final Val Loss": f"{s['final_val_loss']:.4f}",
+                "Final Train Acc": f"{train_acc:.2f}%",
+                "Best Val Acc": f"{s['best_val_acc']:.2f}%",
+                "Test Acc (10k)": f"{test_acc:.2f}%",
+                "Generalisation Gap": f"{gen_gap:.2f}%",
+                "vs. Baseline": f"{delta:+.2f}%" if "Baseline" not in name else "Baseline",
+            }
+        )
+
+    return pd.DataFrame(rows)
+
+
+def plot_scaling_comparison(
+    width_summaries: Dict[str, Dict[str, float]],
+    depth_summaries: Dict[str, Dict[str, float]],
+    width_histories: Dict[str, Dict[str, Sequence[float]]],
+    depth_histories: Dict[str, Dict[str, Sequence[float]]],
+    save_path: Optional[str] = None,
+    show: bool = True,
+) -> plt.Figure:
+    """Plot a comprehensive 2x2 comparison of network width and depth scaling.
+
+    Subplots:
+        1. Validation Accuracy Trajectories across Width Variations.
+        2. Validation Accuracy Trajectories across Depth Variations.
+        3. Parameter Count vs. Test Accuracy (Scaling Efficiency Trade-off).
+        4. Generalisation Gap across all 6 Architecture Variations.
+    """
+    fig, axes = plt.subplots(2, 2, figsize=(15, 11), dpi=300)
+    (ax_w, ax_d), (ax_tradeoff, ax_gap) = axes
+
+    # Subplot 1: Width Validation Acc Trajectories
+    w_palette = {"Width: Narrow [16, 32]": "#377eb8", "Width: Baseline [32, 64]": "#4daf4a", "Width: Wide [64, 128]": "#984ea3"}
+    for name, hist in width_histories.items():
+        epochs = list(range(1, len(hist["val_accs"]) + 1))
+        color = w_palette.get(name, "#333333")
+        ax_w.plot(epochs, hist["val_accs"], marker="o", markersize=4, linewidth=2, label=name, color=color)
+    ax_w.set_title("Network Width: Validation Accuracy Across Epochs", fontsize=12, fontweight="bold")
+    ax_w.set_xlabel("Epoch", fontsize=10)
+    ax_w.set_ylabel("Validation Accuracy (%)", fontsize=10)
+    ax_w.grid(True, linestyle="--", alpha=0.5)
+    ax_w.legend(fontsize=9, loc="lower right")
+
+    # Subplot 2: Depth Validation Acc Trajectories
+    d_palette = {"Depth: 2 Layers (1 Conv)": "#ff7f00", "Depth: 3 Layers (2 Conv - Base)": "#4daf4a", "Depth: 4 Layers (3 Conv)": "#e41a1c"}
+    for name, hist in depth_histories.items():
+        epochs = list(range(1, len(hist["val_accs"]) + 1))
+        color = d_palette.get(name, "#333333")
+        ax_d.plot(epochs, hist["val_accs"], marker="s", markersize=4, linewidth=2, label=name, color=color)
+    ax_d.set_title("Network Depth: Validation Accuracy Across Epochs", fontsize=12, fontweight="bold")
+    ax_d.set_xlabel("Epoch", fontsize=10)
+    ax_d.set_ylabel("Validation Accuracy (%)", fontsize=10)
+    ax_d.grid(True, linestyle="--", alpha=0.5)
+    ax_d.legend(fontsize=9, loc="lower right")
+
+    # Subplot 3: Parameter Count vs. Test Accuracy (Trade-off Scatter / Curve)
+    all_models = {**width_summaries, **depth_summaries}
+    params = [s["params"] for s in all_models.values()]
+    accs = [s["test_acc"] for s in all_models.values()]
+    labels = list(all_models.keys())
+
+    # Width points (blue/purple) and Depth points (orange/red)
+    for name, s in all_models.items():
+        p, acc = s["params"], s["test_acc"]
+        if "Width" in name:
+            marker, color = "o", w_palette.get(name, "#377eb8")
+        else:
+            marker, color = "s", d_palette.get(name, "#e41a1c")
+        ax_tradeoff.scatter(p, acc, s=120, color=color, marker=marker, zorder=5, label=name)
+        ax_tradeoff.annotate(
+            f"{name}\n({p:,} p, {acc:.1f}%)",
+            xy=(p, acc),
+            xytext=(0, 7),
+            textcoords="offset points",
+            ha="center",
+            fontsize=8.5,
+            fontweight="semibold",
+        )
+
+    ax_tradeoff.set_title("Scaling Efficiency: Model Parameters vs. Test Accuracy", fontsize=12, fontweight="bold")
+    ax_tradeoff.set_xlabel("Trainable Parameters", fontsize=10)
+    ax_tradeoff.set_ylabel("Unseen Test Accuracy (%)", fontsize=10)
+    ax_tradeoff.set_xlim(10000, 180000)
+    ax_tradeoff.set_ylim(63, 76)
+    ax_tradeoff.grid(True, linestyle="--", alpha=0.5)
+
+    # Subplot 4: Generalisation Gap across all 6 models
+    gaps = [s["train_acc"] - s["test_acc"] for s in all_models.values()]
+    colors = [w_palette.get(n, d_palette.get(n, "#555555")) for n in labels]
+    short_labels = [n.replace("Width: ", "W: ").replace("Depth: ", "D: ") for n in labels]
+
+    bars = ax_gap.bar(range(len(labels)), gaps, color=colors, alpha=0.85, width=0.5)
+    ax_gap.set_title("Generalisation Gap (Final Train Acc − Test Acc)", fontsize=12, fontweight="bold")
+    ax_gap.set_ylabel("Gap (percentage points)", fontsize=10)
+    ax_gap.set_xticks(range(len(labels)))
+    ax_gap.set_xticklabels(short_labels, rotation=20, ha="right", fontsize=9)
+    ax_gap.grid(True, axis="y", linestyle="--", alpha=0.5)
+
+    for bar, gap in zip(bars, gaps):
+        ax_gap.annotate(
+            f"{gap:.1f}%",
+            xy=(bar.get_x() + bar.get_width() / 2, gap),
+            xytext=(0, 3),
+            textcoords="offset points",
+            ha="center",
+            va="bottom",
+            fontsize=8.5,
+            fontweight="bold",
+        )
+
+    plt.tight_layout()
+
+    if save_path:
+        os.makedirs(os.path.dirname(os.path.abspath(save_path)), exist_ok=True)
+        fig.savefig(save_path, dpi=300, bbox_inches="tight")
+        print(f"Saved scaling comparison figure to {save_path}")
+
+    if show:
+        plt.show()
+
+    return fig
+
+
+def plot_regularisation_comparison(
+    histories: Dict[str, Dict[str, Sequence[float]]],
+    summaries: Dict[str, Dict[str, float]],
+    save_path: Optional[str] = None,
+    show: bool = True,
+) -> plt.Figure:
+    """Plot a comprehensive 2x2 comparison of regularization techniques.
+
+    Subplots:
+        1. Training vs. Validation Loss trajectories across all configurations.
+        2. Validation Accuracy across 20 epochs.
+        3. Train vs. Test Generalisation Gap bar chart.
+        4. Final Test Accuracy improvement over baseline.
+    """
+    palette = {
+        "Baseline CNN": "#e41a1c",
+        "Dropout (p=0.5)": "#377eb8",
+        "Data Augmentation": "#4daf4a",
+        "Dropout + Data Aug": "#984ea3",
+    }
+
+    fig, axes = plt.subplots(2, 2, figsize=(15, 11), dpi=300)
+    (ax_loss, ax_acc), (ax_gap, ax_summary) = axes
+
+    # Subplot 1: Validation Loss
+    for name, hist in histories.items():
+        epochs = list(range(1, len(hist["val_losses"]) + 1))
+        color = palette.get(name, "#333333")
+        ax_loss.plot(epochs, hist["val_losses"], marker="o", markersize=4, linewidth=2, label=f"{name} (Val)", color=color)
+        ax_loss.plot(epochs, hist["train_losses"], linestyle=":", linewidth=1.5, alpha=0.6, label=f"{name} (Train)", color=color)
+
+    ax_loss.set_title("Training & Validation Loss Over 20 Epochs", fontsize=12, fontweight="bold")
+    ax_loss.set_xlabel("Epoch", fontsize=10)
+    ax_loss.set_ylabel("Cross-Entropy Loss", fontsize=10)
+    ax_loss.grid(True, linestyle="--", alpha=0.5)
+    ax_loss.legend(fontsize=8, loc="upper right", ncol=2)
+
+    # Subplot 2: Validation Accuracy
+    for name, hist in histories.items():
+        epochs = list(range(1, len(hist["val_accs"]) + 1))
+        color = palette.get(name, "#333333")
+        ax_acc.plot(epochs, hist["val_accs"], marker="s", markersize=4, linewidth=2, label=name, color=color)
+
+    ax_acc.set_title("Validation Accuracy Trajectory (%)", fontsize=12, fontweight="bold")
+    ax_acc.set_xlabel("Epoch", fontsize=10)
+    ax_acc.set_ylabel("Validation Accuracy (%)", fontsize=10)
+    ax_acc.grid(True, linestyle="--", alpha=0.5)
+    ax_acc.legend(fontsize=9, loc="lower right")
+
+    # Subplot 3: Generalisation Gap (Train Acc - Test Acc)
+    names = list(summaries.keys())
+    train_accs = [summaries[n]["train_acc"] for n in names]
+    test_accs = [summaries[n]["test_acc"] for n in names]
+    gaps = [tr - te for tr, te in zip(train_accs, test_accs)]
+
+    bar_colors = [palette.get(n, "#555555") for n in names]
+    bars = ax_gap.bar(names, gaps, color=bar_colors, alpha=0.85, width=0.5)
+    ax_gap.set_title("Generalisation Gap (Final Train Acc − Test Acc)", fontsize=12, fontweight="bold")
+    ax_gap.set_ylabel("Generalisation Gap (percentage points)", fontsize=10)
+    ax_gap.set_xticks(range(len(names)))
+    ax_gap.set_xticklabels(names, rotation=15, ha="right", fontsize=9.5)
+    ax_gap.grid(True, axis="y", linestyle="--", alpha=0.5)
+
+    for bar, gap in zip(bars, gaps):
+        ax_gap.annotate(
+            f"{gap:.2f}%",
+            xy=(bar.get_x() + bar.get_width() / 2, gap),
+            xytext=(0, 4),
+            textcoords="offset points",
+            ha="center",
+            va="bottom",
+            fontweight="bold",
+            fontsize=9.5,
+        )
+
+    # Subplot 4: Final Test Accuracy Breakdown
+    x = np.arange(len(names))
+    width = 0.35
+    b_val = ax_summary.bar(x - width/2, [summaries[n]["best_val_acc"] for n in names], width, label="Best Val Acc", color="#3182bd", alpha=0.85)
+    b_test = ax_summary.bar(x + width/2, test_accs, width, label="Unseen Test Acc", color="#2ca02c", alpha=0.85)
+
+    ax_summary.set_title("Best Validation vs. Final Test Accuracy (%)", fontsize=12, fontweight="bold")
+    ax_summary.set_ylabel("Accuracy (%)", fontsize=10)
+    ax_summary.set_xticks(x)
+    ax_summary.set_xticklabels(names, rotation=15, ha="right", fontsize=9.5)
+    ax_summary.set_ylim(50, 85)
+    ax_summary.grid(True, axis="y", linestyle="--", alpha=0.5)
+    ax_summary.legend(fontsize=9.5, loc="lower right")
+
+    for bar in list(b_val) + list(b_test):
+        h = bar.get_height()
+        ax_summary.annotate(
+            f"{h:.1f}%",
+            xy=(bar.get_x() + bar.get_width() / 2, h),
+            xytext=(0, 3),
+            textcoords="offset points",
+            ha="center",
+            va="bottom",
+            fontsize=8.5,
+            fontweight="bold",
+        )
+
+    plt.tight_layout()
+
+    if save_path:
+        os.makedirs(os.path.dirname(os.path.abspath(save_path)), exist_ok=True)
+        fig.savefig(save_path, dpi=300, bbox_inches="tight")
+        print(f"Saved regularisation comparison figure to {save_path}")
+
+    if show:
+        plt.show()
+
+    return fig
+
